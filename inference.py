@@ -22,14 +22,25 @@ MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 MAX_STEPS    = 10
 TEMPERATURE  = 0.2
 
-if not API_KEY:
-    raise ValueError("HF_TOKEN environment variable not set.")
+client = None
 
-# ── OpenAI-compatible client pointing at HF ───────────────────
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=API_KEY,
-)
+
+def get_client():
+    global client
+    if client is not None:
+        return client
+
+    if not API_KEY:
+        raise ValueError("HF_TOKEN environment variable not set. Please configure HF_TOKEN in your environment.")
+
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=API_KEY,
+    )
+    return client
+
+
+# ── OpenAI-compatible client pointing at HF ───────────────────────────────────
 
 # ── System prompt ─────────────────────────────────────────────
 SYSTEM_PROMPT = """
@@ -143,6 +154,7 @@ def run_episode(task: str) -> dict:
 
         # Call LLM
         try:
+            client = get_client()
             completion = client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
