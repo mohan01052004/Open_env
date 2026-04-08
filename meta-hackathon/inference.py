@@ -139,6 +139,7 @@ def run_episode(task: str) -> dict:
     print(f"\n{'='*60}")
     print(f"TASK: {task.upper()}")
     print('='*60)
+    print(f"[START] task={task}", flush=True)
 
     env          = IncidentResponseEnv(task=task, max_steps=MAX_STEPS)
     obs          = env.reset()
@@ -177,6 +178,7 @@ def run_episode(task: str) -> dict:
         obs, reward, done, info = env.step(action)
         print(f"  Result  : {obs.last_action_result}")
         print(f"  Reward  : {reward.value} ({reward.reason})")
+        print(f"[STEP] task={task} step={step} reward={reward.value} done={done}", flush=True)
 
         # Track history for context
         step_history.append(
@@ -198,6 +200,7 @@ def run_episode(task: str) -> dict:
         )
 
     # Print final grade
+    print(f"[END] task={task} score={grade_result['score']} steps={len(env._action_history)} passed={int(grade_result['passed'])}", flush=True)
     print(f"\n── FINAL GRADE ────────────────────────────────")
     print(f"  Score   : {grade_result['score']} / 1.0")
     print(f"  Passed  : {'✅ YES' if grade_result['passed'] else '❌ NO'}")
