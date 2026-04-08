@@ -1,8 +1,8 @@
 ---
-title: Incident Response OpenEnv
-emoji: 🏆
-colorFrom: pink
-colorTo: red
+title: OpenEnv
+emoji: 📊
+colorFrom: green
+colorTo: green
 sdk: docker
 pinned: false
 license: mit
