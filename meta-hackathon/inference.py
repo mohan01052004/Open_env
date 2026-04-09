@@ -29,15 +29,15 @@ def get_client():
 
     # Read environment variables at runtime, not import time
     api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-    api_key      = os.getenv("API_KEY")
+    api_key      = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
     model_name   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
     if not api_key:
         raise ValueError("API_KEY environment variable not set. Please configure API_KEY in your environment.")
 
-    print(f"[DEBUG] Initializing OpenAI client with base_url={api_base_url}", flush=True)
+    print(f"[DEBUG] Initializing OpenAI client with api_base={api_base_url}", flush=True)
     client = OpenAI(
-        base_url=api_base_url,
+        api_base=api_base_url,
         api_key=api_key,
     )
     return client
