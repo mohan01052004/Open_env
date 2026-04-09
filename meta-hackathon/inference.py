@@ -220,9 +220,12 @@ def run_episode(task: str) -> dict:
 # ── Main ──────────────────────────────────────────────────────
 
 def main():
+    api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+    model_name   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    
     print("🚨 Incident Response Commander — Baseline Agent")
-    print(f"   Model : {MODEL_NAME}")
-    print(f"   API   : {API_BASE_URL}")
+    print(f"   Model : {model_name}")
+    print(f"   API   : {api_base_url}")
 
     results = {}
     for task in ["easy", "medium", "hard"]:
