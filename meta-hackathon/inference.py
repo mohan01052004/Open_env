@@ -16,9 +16,6 @@ from env.environment import IncidentResponseEnv
 from env.models import Action
 
 # ── Config ────────────────────────────────────────────────────
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-API_KEY      = os.getenv("API_KEY")  # Use API_KEY from validator, not HF_TOKEN
-MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 MAX_STEPS    = 10
 TEMPERATURE  = 0.2
 
@@ -30,12 +27,18 @@ def get_client():
     if client is not None:
         return client
 
-    if not API_KEY:
+    # Read environment variables at runtime, not import time
+    api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+    api_key      = os.getenv("API_KEY")
+    model_name   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+
+    if not api_key:
         raise ValueError("API_KEY environment variable not set. Please configure API_KEY in your environment.")
 
+    print(f"[DEBUG] Initializing OpenAI client with base_url={api_base_url}", flush=True)
     client = OpenAI(
-        base_url=API_BASE_URL,
-        api_key=API_KEY,
+        base_url=api_base_url,
+        api_key=api_key,
     )
     return client
 
@@ -156,8 +159,10 @@ def run_episode(task: str) -> dict:
         # Call LLM
         try:
             client = get_client()
+            model_name = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+            print(f"[DEBUG] Making API call with model={model_name}", flush=True)
             completion = client.chat.completions.create(
-                model=MODEL_NAME,
+                model=model_name,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user",   "content": prompt},
@@ -166,8 +171,9 @@ def run_episode(task: str) -> dict:
                 max_tokens=100,
             )
             response_text = completion.choices[0].message.content or ""
+            print(f"[DEBUG] API call succeeded", flush=True)
         except Exception as e:
-            print(f"  ⚠️  LLM call failed: {e}")
+            print(f"  ⚠️  LLM call failed: {e}", flush=True)
             response_text = '{"action": "escalate", "target": "llm_error"}'
 
         # Parse action
