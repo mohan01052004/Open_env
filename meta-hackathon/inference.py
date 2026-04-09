@@ -17,7 +17,7 @@ from env.models import Action
 
 # ── Config ────────────────────────────────────────────────────
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-API_KEY      = os.getenv("HF_TOKEN")
+API_KEY      = os.getenv("API_KEY")  # Use API_KEY from validator, not HF_TOKEN
 MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 MAX_STEPS    = 10
 TEMPERATURE  = 0.2
@@ -31,7 +31,7 @@ def get_client():
         return client
 
     if not API_KEY:
-        raise ValueError("HF_TOKEN environment variable not set. Please configure HF_TOKEN in your environment.")
+        raise ValueError("API_KEY environment variable not set. Please configure API_KEY in your environment.")
 
     client = OpenAI(
         base_url=API_BASE_URL,
