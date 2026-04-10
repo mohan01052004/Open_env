@@ -158,10 +158,14 @@ def run_episode(task: str) -> dict:
         prompt = build_prompt(obs, step_history)
 
         # Call LLM
+        client = get_client()
+        model_name = os.environ.get("MODEL_NAME")
+        if not model_name:
+            raise RuntimeError(
+                "MODEL_NAME environment variable must be set to the allowed LiteLLM proxy model name."
+            )
+        print(f"[DEBUG] Making API call with model={model_name}", flush=True)
         try:
-            client = get_client()
-            model_name = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-            print(f"[DEBUG] Making API call with model={model_name}", flush=True)
             completion = client.chat.completions.create(
                 model=model_name,
                 messages=[
@@ -174,8 +178,10 @@ def run_episode(task: str) -> dict:
             response_text = completion.choices[0].message.content or ""
             print(f"[DEBUG] API call succeeded", flush=True)
         except Exception as e:
-            print(f"  ⚠️  LLM call failed: {e}", flush=True)
-            response_text = '{"action": "escalate", "target": "llm_error"}'
+            import traceback
+            print(f"  ❌ LLM call HARD FAILED: {e}", flush=True)
+            traceback.print_exc()
+            raise
 
         # Parse action
         action = parse_action(response_text)
