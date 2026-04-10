@@ -11,7 +11,6 @@ Required environment variables:
 import os
 import json
 import re
-import openai
 from openai import OpenAI
 from env.environment import IncidentResponseEnv
 from env.models import Action
@@ -38,9 +37,6 @@ def get_client():
     print(f"[DEBUG] MODEL_NAME present: {bool(os.environ.get('MODEL_NAME'))}", flush=True)
 
     print(f"[DEBUG] Initializing OpenAI client with base_url={api_base_url}", flush=True)
-    openai.api_base = api_base_url
-    openai.api_key = api_key
-    print(f"[DEBUG] openai.version={getattr(openai, '__version__', 'unknown')}", flush=True)
     client = OpenAI(
         base_url=api_base_url,
         api_key=api_key,
