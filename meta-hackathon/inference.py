@@ -1,62 +1,36 @@
 """
 inference.py — Baseline agent for Incident Response Commander
-Uses free Hugging Face Inference API via OpenAI-compatible client.
+Uses OpenAI-compatible client via LiteLLM proxy.
 
 Required environment variables:
-    API_BASE_URL   → provided proxy base URL
-    API_KEY        → provided proxy API key
-    MODEL_NAME     → Qwen/Qwen2.5-72B-Instruct
+    API_BASE_URL   → LiteLLM proxy base URL
+    MODEL_NAME     → model identifier (e.g. meta-llama/Llama-3.3-70B-Instruct)
+    HF_TOKEN       → Hugging Face / proxy API key
 """
 
 import os
 import json
 import re
-import urllib.request
-import urllib.error
+from openai import OpenAI
 from env.environment import IncidentResponseEnv
 from env.models import Action
 
 # ── Config ────────────────────────────────────────────────────
-MAX_STEPS    = 10
-TEMPERATURE  = 0.2
+MAX_STEPS   = 10
+TEMPERATURE = 0.2
 
-def call_llm(messages: list) -> str:
-    """Make a raw HTTP POST to the LiteLLM proxy. No openai package needed."""
+# ── OpenAI client (initialised once) ─────────────────────────
+def get_client() -> OpenAI:
     api_base_url = os.environ.get("API_BASE_URL", "").rstrip("/")
-    api_key      = os.environ.get("API_KEY", "")
-    model_name   = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
+    hf_token     = os.environ.get("HF_TOKEN", "")
 
     if not api_base_url:
         raise RuntimeError("API_BASE_URL environment variable is not set")
-    if not api_key:
-        raise RuntimeError("API_KEY environment variable is not set")
+    if not hf_token:
+        raise RuntimeError("HF_TOKEN environment variable is not set")
 
-    url     = f"{api_base_url}/chat/completions"
-    payload = json.dumps({
-        "model":       model_name,
-        "messages":    messages,
-        "temperature": TEMPERATURE,
-        "max_tokens":  100,
-    }).encode("utf-8")
+    return OpenAI(base_url=api_base_url, api_key=hf_token)
 
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            "Content-Type":  "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-
-    print(f"[DEBUG] POST {url} model={model_name}", flush=True)
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        body = json.loads(resp.read().decode("utf-8"))
-
-    return body["choices"][0]["message"]["content"] or ""
-
-
-# ── OpenAI-compatible client pointing at HF ───────────────────────────────────
 
 # ── System prompt ─────────────────────────────────────────────
 SYSTEM_PROMPT = """
@@ -76,7 +50,7 @@ Rules:
 1. Always investigate (check_logs or check_metrics) BEFORE taking a fix action
 2. Only fix the service that is actually broken
 3. Do NOT end without calling notify_team — it is MANDATORY
-4. Call notify_team BEFORE applying the fix, like: notify_team("fixing payment-service now")
+4. Call notify_team BEFORE applying the fix
 5. Do not restart or rollback services that are healthy
 
 IMPORTANT: Your sequence should always be:
@@ -92,21 +66,18 @@ Nothing else. No explanation. Just the JSON.
 
 
 # ── Build prompt from observation ─────────────────────────────
-
 def build_prompt(obs, step_history):
     services_str = "\n".join([
         f"  - {s.name}: status={s.status}, cpu={s.cpu}%, memory={s.memory}%, error_rate={s.error_rate}"
         for s in obs.services
     ])
-
     alerts_str = "\n".join([
         f"  - [{a.severity.upper()}] {a.service}: {a.message}"
         for a in obs.alerts
     ])
-
     history_str = "\n".join(step_history[-5:]) if step_history else "None"
 
-    prompt = f"""
+    return f"""
 CURRENT INCIDENT — Step {obs.step}
 Actions remaining: {obs.actions_remaining}
 
@@ -124,15 +95,11 @@ WHAT YOU HAVE DONE SO FAR:
 
 What is your next action? Respond with JSON only.
 """.strip()
-    return prompt
 
 
 # ── Parse LLM response into Action ───────────────────────────
-
 def parse_action(response_text: str) -> Action:
-    """Extract JSON from LLM response and convert to Action."""
     try:
-        # Try to find JSON in the response
         match = re.search(r'\{.*?\}', response_text, re.DOTALL)
         if match:
             data = json.loads(match.group())
@@ -143,38 +110,42 @@ def parse_action(response_text: str) -> Action:
             )
     except Exception:
         pass
-
-    # Fallback if parsing fails
-    print(f"  ⚠️  Could not parse response: {response_text[:100]}")
+    print(f"  ⚠️  Could not parse response: {response_text[:100]}", flush=True)
     return Action(name="escalate", target="parse_error")
 
 
 # ── Run one episode ───────────────────────────────────────────
-
 def run_episode(task: str) -> dict:
-    print(f"\n{'='*60}")
-    print(f"TASK: {task.upper()}")
-    print('='*60)
+    model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
+
+    print(f"\n{'='*60}", flush=True)
+    print(f"TASK: {task.upper()}", flush=True)
+    print('='*60, flush=True)
     print(f"[START] task={task}", flush=True)
 
     env          = IncidentResponseEnv(task=task, max_steps=MAX_STEPS)
     obs          = env.reset()
     step_history = []
     grade_result = None
+    client       = get_client()
 
-    print(f"Incident: {env._scenario['description']}")
-    print(f"Alerts  : {[a.message for a in obs.alerts]}")
+    print(f"Incident: {env._scenario['description']}", flush=True)
+    print(f"Alerts  : {[a.message for a in obs.alerts]}", flush=True)
 
     for step in range(1, MAX_STEPS + 1):
-        # Build prompt
         prompt = build_prompt(obs, step_history)
 
-        # Call LLM
         try:
-            response_text = call_llm([
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": prompt},
-            ])
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt},
+                ],
+                temperature=TEMPERATURE,
+                max_tokens=100,
+            )
+            response_text = completion.choices[0].message.content or ""
             print(f"[DEBUG] API call succeeded", flush=True)
         except Exception as e:
             import traceback
@@ -182,17 +153,14 @@ def run_episode(task: str) -> dict:
             traceback.print_exc()
             raise
 
-        # Parse action
         action = parse_action(response_text)
-        print(f"\n  Step {step}: LLM chose → {action.name}({action.target or action.message or ''})")
+        print(f"\n  Step {step}: LLM chose → {action.name}({action.target or action.message or ''})", flush=True)
 
-        # Step environment
         obs, reward, done, info = env.step(action)
-        print(f"  Result  : {obs.last_action_result}")
-        print(f"  Reward  : {reward.value} ({reward.reason})")
+        print(f"  Result  : {obs.last_action_result}", flush=True)
+        print(f"  Reward  : {reward.value} ({reward.reason})", flush=True)
         print(f"[STEP] task={task} step={step} reward={reward.value} done={done}", flush=True)
 
-        # Track history for context
         step_history.append(
             f"Step {step}: {action.name}({action.target or action.message or ''}) "
             f"→ reward {reward.value}"
@@ -202,7 +170,6 @@ def run_episode(task: str) -> dict:
             grade_result = info.get("grade")
             break
 
-    # Force grade if episode didn't finish
     if not grade_result:
         from env.grader import IncidentGrader
         grader       = IncidentGrader(env._scenario)
@@ -211,49 +178,46 @@ def run_episode(task: str) -> dict:
             resolved=env._scenario.get("resolved", False)
         )
 
-    # Print final grade
     print(f"[END] task={task} score={grade_result['score']} steps={len(env._action_history)} passed={int(grade_result['passed'])}", flush=True)
-    print(f"\n── FINAL GRADE ────────────────────────────────")
-    print(f"  Score   : {grade_result['score']} / 1.0")
-    print(f"  Passed  : {'✅ YES' if grade_result['passed'] else '❌ NO'}")
-    print(f"  Feedback:")
+    print(f"\n── FINAL GRADE ────────────────────────────────", flush=True)
+    print(f"  Score   : {grade_result['score']} / 1.0", flush=True)
+    print(f"  Passed  : {'✅ YES' if grade_result['passed'] else '❌ NO'}", flush=True)
+    print(f"  Feedback:", flush=True)
     for f in grade_result["feedback"]:
-        print(f"    {f}")
+        print(f"    {f}", flush=True)
 
     return grade_result
 
 
 # ── Main ──────────────────────────────────────────────────────
-
 def main():
     api_base_url = os.environ.get("API_BASE_URL", "")
-    api_key = os.environ.get("API_KEY", "")
-    model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
-    
-    print("🚨 Incident Response Commander — Baseline Agent")
-    print(f"   Model : {model_name}")
-    print(f"   API   : {api_base_url}")
-    print(f"[DEBUG] API_KEY present in main: {bool(api_key)}", flush=True)
-    print(f"[DEBUG] MODEL_NAME in main: {model_name}", flush=True)
+    hf_token     = os.environ.get("HF_TOKEN", "")
+    model_name   = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
+
+    print("🚨 Incident Response Commander — Baseline Agent", flush=True)
+    print(f"   Model : {model_name}", flush=True)
+    print(f"   API   : {api_base_url}", flush=True)
+    print(f"[DEBUG] HF_TOKEN present: {bool(hf_token)}", flush=True)
+    print(f"[DEBUG] MODEL_NAME: {model_name}", flush=True)
 
     results = {}
     for task in ["easy", "medium", "hard"]:
         results[task] = run_episode(task)
 
-    # Summary
-    print(f"\n{'='*60}")
-    print("SUMMARY")
-    print('='*60)
+    print(f"\n{'='*60}", flush=True)
+    print("SUMMARY", flush=True)
+    print('='*60, flush=True)
     total = 0
     for task, result in results.items():
         score  = result["score"]
         passed = "✅" if result["passed"] else "❌"
-        print(f"  {task:<10} {passed}  {score} / 1.0")
+        print(f"  {task:<10} {passed}  {score} / 1.0", flush=True)
         total += score
 
     avg = round(total / len(results), 3)
-    print(f"\n  Average score: {avg} / 1.0")
-    print(f"  Tasks passed : {sum(1 for r in results.values() if r['passed'])} / {len(results)}")
+    print(f"\n  Average score: {avg} / 1.0", flush=True)
+    print(f"  Tasks passed : {sum(1 for r in results.values() if r['passed'])} / {len(results)}", flush=True)
 
 
 if __name__ == "__main__":

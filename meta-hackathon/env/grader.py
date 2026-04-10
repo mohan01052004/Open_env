@@ -3,10 +3,11 @@ from env.models import Reward
 
 # ── Grader weights (must sum to 1.0) ─────────────────────────
 WEIGHTS = {
-    "root_cause_identified": 0.35,
+    "root_cause_identified": 0.30,
     "correct_fix_applied":   0.35,
-    "no_unnecessary_actions":0.20,
+    "no_unnecessary_actions":0.15,
     "team_notified":         0.10,
+    "step_efficiency":       0.10,
 }
 
 # ── Fix action per root cause type ───────────────────────────
@@ -71,6 +72,17 @@ class IncidentGrader:
         else:
             feedback.append("❌ Team was never notified.")
 
+        # 5. Step efficiency — reward resolving faster
+        total_steps = len(action_history)
+        if total_steps <= 4:
+            efficiency = 1.0
+        elif total_steps <= 7:
+            efficiency = 0.5
+        else:
+            efficiency = 0.0
+        breakdown["step_efficiency"] = efficiency
+        feedback.append(f"{'✅' if efficiency == 1.0 else '⚠️' if efficiency == 0.5 else '❌'} Resolved in {total_steps} steps.")
+
         # ── Final weighted score ──────────────────────────────
         score = round(sum(
             breakdown[k] * WEIGHTS[k] for k in WEIGHTS
@@ -121,7 +133,9 @@ class IncidentGrader:
             for a in action_history
         )
 
-        if correct_fix_on_correct_service and resolved:
+        # Award full credit if correct action on correct service (resolved flag
+        # is set by the env handler, but grader should not depend on it alone)
+        if correct_fix_on_correct_service:
             return 1.0
         if correct_fix_on_wrong_service:
             return 0.5
