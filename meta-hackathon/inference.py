@@ -27,20 +27,32 @@ def get_client():
     if client is not None:
         return client
 
-    # Read environment variables at runtime, not import time
-    api_base_url = os.environ["API_BASE_URL"]
-    api_key = os.environ["API_KEY"]
+    api_base_url = os.environ.get("API_BASE_URL")
+    api_key = os.environ.get("API_KEY")
     model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
 
-    print(f"[DEBUG] API_BASE_URL present: {bool(api_base_url)}", flush=True)
+    if not api_base_url:
+        raise RuntimeError("API_BASE_URL environment variable is not set")
+    if not api_key:
+        raise RuntimeError("API_KEY environment variable is not set")
+
+    print(f"[DEBUG] API_BASE_URL: {api_base_url}", flush=True)
     print(f"[DEBUG] API_KEY present: {bool(api_key)}", flush=True)
     print(f"[DEBUG] MODEL_NAME: {model_name}", flush=True)
 
-    print(f"[DEBUG] Initializing OpenAI client with base_url={api_base_url}", flush=True)
-    client = OpenAI(
-        base_url=api_base_url,
-        api_key=api_key,
-    )
+    try:
+        print(f"[DEBUG] Initializing OpenAI client with base_url={api_base_url}", flush=True)
+        client = OpenAI(
+            base_url=api_base_url,
+            api_key=api_key,
+        )
+        print("[DEBUG] OpenAI client initialized successfully", flush=True)
+    except Exception as e:
+        import traceback
+        print(f"❌ Failed to initialize OpenAI client: {e}", flush=True)
+        traceback.print_exc()
+        raise
+
     return client
 
 
@@ -223,8 +235,8 @@ def run_episode(task: str) -> dict:
 # ── Main ──────────────────────────────────────────────────────
 
 def main():
-    api_base_url = os.environ["API_BASE_URL"]
-    api_key = os.environ["API_KEY"]
+    api_base_url = os.environ.get("API_BASE_URL", "")
+    api_key = os.environ.get("API_KEY", "")
     model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
     
     print("🚨 Incident Response Commander — Baseline Agent")
