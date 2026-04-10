@@ -11,7 +11,8 @@ Required environment variables:
 import os
 import json
 import re
-from openai import OpenAI
+import urllib.request
+import urllib.error
 from env.environment import IncidentResponseEnv
 from env.models import Action
 
@@ -19,41 +20,40 @@ from env.models import Action
 MAX_STEPS    = 10
 TEMPERATURE  = 0.2
 
-client = None
-
-
-def get_client():
-    global client
-    if client is not None:
-        return client
-
-    api_base_url = os.environ.get("API_BASE_URL")
-    api_key = os.environ.get("API_KEY")
-    model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
+def call_llm(messages: list) -> str:
+    """Make a raw HTTP POST to the LiteLLM proxy. No openai package needed."""
+    api_base_url = os.environ.get("API_BASE_URL", "").rstrip("/")
+    api_key      = os.environ.get("API_KEY", "")
+    model_name   = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
 
     if not api_base_url:
         raise RuntimeError("API_BASE_URL environment variable is not set")
     if not api_key:
         raise RuntimeError("API_KEY environment variable is not set")
 
-    print(f"[DEBUG] API_BASE_URL: {api_base_url}", flush=True)
-    print(f"[DEBUG] API_KEY present: {bool(api_key)}", flush=True)
-    print(f"[DEBUG] MODEL_NAME: {model_name}", flush=True)
+    url     = f"{api_base_url}/chat/completions"
+    payload = json.dumps({
+        "model":       model_name,
+        "messages":    messages,
+        "temperature": TEMPERATURE,
+        "max_tokens":  100,
+    }).encode("utf-8")
 
-    try:
-        print(f"[DEBUG] Initializing OpenAI client with base_url={api_base_url}", flush=True)
-        client = OpenAI(
-            base_url=api_base_url,
-            api_key=api_key,
-        )
-        print("[DEBUG] OpenAI client initialized successfully", flush=True)
-    except Exception as e:
-        import traceback
-        print(f"❌ Failed to initialize OpenAI client: {e}", flush=True)
-        traceback.print_exc()
-        raise
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Content-Type":  "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
 
-    return client
+    print(f"[DEBUG] POST {url} model={model_name}", flush=True)
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+
+    return body["choices"][0]["message"]["content"] or ""
 
 
 # ── OpenAI-compatible client pointing at HF ───────────────────────────────────
@@ -170,20 +170,11 @@ def run_episode(task: str) -> dict:
         prompt = build_prompt(obs, step_history)
 
         # Call LLM
-        client = get_client()
-        model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
-        print(f"[DEBUG] Making API call with model={model_name}", flush=True)
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": prompt},
-                ],
-                temperature=TEMPERATURE,
-                max_tokens=100,
-            )
-            response_text = completion.choices[0].message.content or ""
+            response_text = call_llm([
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": prompt},
+            ])
             print(f"[DEBUG] API call succeeded", flush=True)
         except Exception as e:
             import traceback
