@@ -30,11 +30,11 @@ def get_client():
     # Read environment variables at runtime, not import time
     api_base_url = os.environ["API_BASE_URL"]
     api_key = os.environ["API_KEY"]
-    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
 
     print(f"[DEBUG] API_BASE_URL present: {bool(api_base_url)}", flush=True)
     print(f"[DEBUG] API_KEY present: {bool(api_key)}", flush=True)
-    print(f"[DEBUG] MODEL_NAME present: {bool(os.environ.get('MODEL_NAME'))}", flush=True)
+    print(f"[DEBUG] MODEL_NAME: {model_name}", flush=True)
 
     print(f"[DEBUG] Initializing OpenAI client with base_url={api_base_url}", flush=True)
     client = OpenAI(
@@ -159,11 +159,7 @@ def run_episode(task: str) -> dict:
 
         # Call LLM
         client = get_client()
-        model_name = os.environ.get("MODEL_NAME")
-        if not model_name:
-            raise RuntimeError(
-                "MODEL_NAME environment variable must be set to the allowed LiteLLM proxy model name."
-            )
+        model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
         print(f"[DEBUG] Making API call with model={model_name}", flush=True)
         try:
             completion = client.chat.completions.create(
@@ -229,13 +225,13 @@ def run_episode(task: str) -> dict:
 def main():
     api_base_url = os.environ["API_BASE_URL"]
     api_key = os.environ["API_KEY"]
-    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    model_name = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
     
     print("🚨 Incident Response Commander — Baseline Agent")
     print(f"   Model : {model_name}")
     print(f"   API   : {api_base_url}")
     print(f"[DEBUG] API_KEY present in main: {bool(api_key)}", flush=True)
-    print(f"[DEBUG] MODEL_NAME present in main: {bool(os.environ.get('MODEL_NAME'))}", flush=True)
+    print(f"[DEBUG] MODEL_NAME in main: {model_name}", flush=True)
 
     results = {}
     for task in ["easy", "medium", "hard"]:
