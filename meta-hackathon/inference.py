@@ -5,12 +5,14 @@ Uses free Hugging Face Inference API via OpenAI-compatible client.
 Required environment variables:
     API_BASE_URL   → https://router.huggingface.co/v1
     MODEL_NAME     → Qwen/Qwen2.5-72B-Instruct
-    HF_TOKEN       → your Hugging Face token
+    API_KEY        → your Hugging Face API key
+    OPENAI_API_KEY → alternative fallback key name
 """
 
 import os
 import json
 import re
+import openai
 from openai import OpenAI
 from env.environment import IncidentResponseEnv
 from env.models import Action
@@ -28,11 +30,33 @@ def get_client():
         return client
 
     # Read environment variables at runtime, not import time
-    api_base_url = os.environ["API_BASE_URL"]
-    api_key      = os.environ["API_KEY"]
-    model_name   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    api_base_url = (
+        os.environ.get("API_BASE_URL")
+        or os.environ.get("OPENAI_API_BASE")
+        or os.environ.get("OPENAI_API_BASE_URL")
+        or "https://router.huggingface.co/v1"
+    )
+    api_key = (
+        os.environ.get("API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("HF_TOKEN")
+    )
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+
+    print(f"[DEBUG] API_BASE_URL present: {bool(api_base_url)}", flush=True)
+    print(f"[DEBUG] API_KEY present: {bool(os.environ.get('API_KEY'))}", flush=True)
+    print(f"[DEBUG] OPENAI_API_KEY present: {bool(os.environ.get('OPENAI_API_KEY'))}", flush=True)
+    print(f"[DEBUG] HF_TOKEN present: {bool(os.environ.get('HF_TOKEN'))}", flush=True)
+    print(f"[DEBUG] MODEL_NAME present: {bool(os.environ.get('MODEL_NAME'))}", flush=True)
+
+    if not api_key:
+        raise ValueError(
+            "No API key found. Set API_KEY, OPENAI_API_KEY, or HF_TOKEN in your environment."
+        )
 
     print(f"[DEBUG] Initializing OpenAI client with base_url={api_base_url}", flush=True)
+    openai.api_base = api_base_url
+    openai.api_key = api_key
     client = OpenAI(
         base_url=api_base_url,
         api_key=api_key,
@@ -217,12 +241,28 @@ def run_episode(task: str) -> dict:
 # ── Main ──────────────────────────────────────────────────────
 
 def main():
-    api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-    model_name   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    api_base_url = (
+        os.environ.get("API_BASE_URL")
+        or os.environ.get("OPENAI_API_BASE")
+        or os.environ.get("OPENAI_API_BASE_URL")
+        or "https://router.huggingface.co/v1"
+    )
+    api_key = (
+        os.environ.get("API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("HF_TOKEN")
+    )
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
     
     print("🚨 Incident Response Commander — Baseline Agent")
     print(f"   Model : {model_name}")
     print(f"   API   : {api_base_url}")
+    print(f"[DEBUG] API_KEY present in main: {bool(os.environ.get('API_KEY'))}", flush=True)
+    print(f"[DEBUG] OPENAI_API_KEY present in main: {bool(os.environ.get('OPENAI_API_KEY'))}", flush=True)
+    print(f"[DEBUG] HF_TOKEN present in main: {bool(os.environ.get('HF_TOKEN'))}", flush=True)
+    print(f"[DEBUG] API_BASE_URL present in main: {bool(os.environ.get('API_BASE_URL'))}", flush=True)
+    print(f"[DEBUG] OPENAI_API_BASE present in main: {bool(os.environ.get('OPENAI_API_BASE'))}", flush=True)
+    print(f"[DEBUG] OPENAI_API_BASE_URL present in main: {bool(os.environ.get('OPENAI_API_BASE_URL'))}", flush=True)
 
     results = {}
     for task in ["easy", "medium", "hard"]:
